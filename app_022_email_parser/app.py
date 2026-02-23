@@ -8,7 +8,8 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import time
+import re
+from collections import Counter
 
 st.set_page_config(
     page_title="Email Parser",
@@ -16,32 +17,68 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🔤 Email Parser")
+st.title("📧 Email Parser")
 st.markdown("""
-**Real-world Use Case**: Contact information extraction
-- Process and analyze text data
-- Extract meaningful insights
-- Visualize results comprehensively
+**Real-world Use Case**: Extract email addresses and contact information
+- Email address extraction
+- Domain analysis
+- Contact information parsing
+- Batch email processing
 """)
 
 # Sidebar
 st.sidebar.header("⚙️ Configuration")
 mode = st.sidebar.selectbox("Mode", ["Single Input", "Batch Processing", "Demo"])
+st.sidebar.markdown("---")
+st.sidebar.markdown("**Extraction Features:**")
+st.sidebar.markdown("""
+- 📧 Email Addresses
+- 🌐 Domain Names
+- 👤 Name Patterns
+- 📊 Email Statistics
+""")
 
-# Main processing function
-def process_text(text):
-    """Main NLP processing function"""
-    # Simulate processing
-    time.sleep(0.3)
+def parse_emails(text):
+    """Parse and extract email addresses from text"""
+    # Email regex pattern
+    email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
     
-    results = {
-        "text": text,
-        "length": len(text),
-        "word_count": len(text.split()),
-        "processed": True
+    # Find all emails
+    emails = re.findall(email_pattern, text)
+    
+    # Extract domains
+    domains = [email.split('@')[1] for email in emails]
+    
+    # Extract usernames
+    usernames = [email.split('@')[0] for email in emails]
+    
+    # Domain statistics
+    domain_counts = Counter(domains)
+    
+    # Categorize by domain type
+    domain_types = {}
+    for domain in set(domains):
+        if any(x in domain for x in ['gmail', 'yahoo', 'hotmail', 'outlook']):
+            domain_types[domain] = 'Personal'
+        elif any(x in domain for x in ['.edu', 'university']):
+            domain_types[domain] = 'Educational'
+        elif any(x in domain for x in ['.gov', 'government']):
+            domain_types[domain] = 'Government'
+        else:
+            domain_types[domain] = 'Business/Other'
+    
+    return {
+        'text': text,
+        'emails': emails,
+        'unique_emails': list(set(emails)),
+        'total_emails': len(emails),
+        'unique_count': len(set(emails)),
+        'domains': domains,
+        'unique_domains': list(set(domains)),
+        'domain_counts': dict(domain_counts),
+        'domain_types': domain_types,
+        'usernames': usernames
     }
-    
-    return results
 
 # Mode: Single Input
 if mode == "Single Input":
@@ -53,33 +90,38 @@ if mode == "Single Input":
         placeholder="Type or paste your text here..."
     )
     
-    if st.button("🔍 Process", type="primary"):
+    if st.button("🔍 Extract Emails", type="primary"):
         if user_input.strip():
-            with st.spinner("Processing..."):
-                result = process_text(user_input)
+            with st.spinner("Parsing..."):
+                result = parse_emails(user_input)
             
-            st.success("Processing Complete!")
+            st.success("✅ Parsing Complete!")
             
-            # Display metrics
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Text Length", result["length"])
+                st.metric("Total Emails", result['total_emails'])
             with col2:
-                st.metric("Word Count", result["word_count"])
+                st.metric("Unique Emails", result['unique_count'])
             with col3:
-                st.metric("Status", "✅ Processed")
+                st.metric("Unique Domains", len(result['unique_domains']))
             
-            # Visualization
-            st.subheader("📊 Analysis Results")
-            fig = go.Figure(go.Indicator(
-                mode="number+gauge",
-                value=result["word_count"],
-                title={"text": "Word Count"},
-                gauge={"axis": {"range": [0, 1000]}}
-            ))
-            st.plotly_chart(fig, use_container_width=True)
+            if result['emails']:
+                st.subheader("📧 Extracted Emails")
+                for email in result['unique_emails']:
+                    st.write(f"• {email}")
+                
+                if result['domain_counts']:
+                    st.subheader("📊 Domain Distribution")
+                    domain_df = pd.DataFrame(list(result['domain_counts'].items()),
+                                            columns=['Domain', 'Count'])
+                    fig = px.bar(domain_df, x='Domain', y='Count',
+                                title='Emails by Domain',
+                                color='Count', color_continuous_scale='Viridis')
+                    st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No email addresses found.")
         else:
-            st.warning("Please enter some text to process.")
+            st.warning("Please enter some text.")
 
 # Mode: Batch Processing
 elif mode == "Batch Processing":
@@ -92,68 +134,45 @@ elif mode == "Batch Processing":
         st.write(f"Loaded {len(df)} rows")
         
         if 'text' in df.columns:
-            if st.button("🔍 Process All", type="primary"):
-                results = []
-                progress_bar = st.progress(0)
-                
+            if st.button("🔍 Parse All", type="primary"):
+                all_emails = []
                 for idx, text in enumerate(df['text']):
-                    result = process_text(str(text))
-                    results.append(result)
-                    progress_bar.progress((idx + 1) / len(df))
+                    result = parse_emails(str(text))
+                    all_emails.extend(result['emails'])
                 
-                results_df = pd.DataFrame(results)
-                st.success(f"Processed {len(results_df)} texts!")
+                st.success(f"✅ Parsed {len(df)} texts!")
+                st.metric("Total Emails Found", len(all_emails))
                 
-                # Summary stats
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Total Processed", len(results_df))
-                with col2:
-                    st.metric("Avg Word Count", f"{results_df['word_count'].mean():.1f}")
-                
-                # Visualization
-                fig = px.histogram(results_df, x='word_count', title='Word Count Distribution')
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Results table
-                st.dataframe(results_df, use_container_width=True)
-                
-                # Download
-                csv = results_df.to_csv(index=False)
-                st.download_button("📥 Download Results", csv, "results.csv", "text/csv")
+                if all_emails:
+                    emails_df = pd.DataFrame({'Email': list(set(all_emails))})
+                    st.dataframe(emails_df, use_container_width=True)
+                    csv = emails_df.to_csv(index=False)
+                    st.download_button("📥 Download", csv, "emails.csv", "text/csv")
         else:
             st.error("CSV must contain 'text' column")
     else:
-        st.info("Upload a CSV file to perform batch processing")
+        st.info("Upload a CSV file")
 
 # Mode: Demo
 else:
     st.header("🎯 Demo Mode")
     
-    sample_texts = [
-        "This is a sample text for demonstration.",
-        "Another example to show the processing capabilities.",
-        "Third sample text with different content."
+    samples = [
+        "Contact us at support@example.com or sales@company.org for more information.",
+        "Email john.doe@university.edu and jane.smith@gov.agency for details.",
+        "Reach out: info@startup.io, marketing@business.net, admin@service.com"
     ]
     
-    st.write(f"Processing {len(sample_texts)} sample texts...")
-    
     if st.button("🚀 Run Demo", type="primary"):
-        results = []
-        for text in sample_texts:
-            result = process_text(text)
-            results.append(result)
+        all_emails = []
+        for text in samples:
+            result = parse_emails(text)
+            all_emails.extend(result['emails'])
         
-        results_df = pd.DataFrame(results)
-        
-        st.success("Demo Complete!")
-        
-        # Display results
-        st.dataframe(results_df, use_container_width=True)
-        
-        # Visualization
-        fig = px.bar(results_df, x='word_count', y='length', title='Text Statistics')
-        st.plotly_chart(fig, use_container_width=True)
+        st.success(f"✅ Found {len(all_emails)} emails!")
+        for email in set(all_emails):
+            st.write(f"📧 {email}")
 
 st.markdown("---")
-st.markdown("**About**: Email Parser - Contact information extraction")
+st.markdown("**About**: Email Parser - Extract and analyze email addresses from text")
+st.caption("💡 Extracts emails, analyzes domains, categorizes by type")

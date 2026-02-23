@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import time
+import re
 
 st.set_page_config(
     page_title="Relationship Extraction",
@@ -16,32 +16,49 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🔤 Relationship Extraction")
+st.title("🔗 Relationship Extraction")
 st.markdown("""
-**Real-world Use Case**: Entity relationship identification
-- Process and analyze text data
-- Extract meaningful insights
-- Visualize results comprehensively
+**Real-world Use Case**: Extract entity relationships
+- Person-Organization relationships
+- Subject-Verb-Object patterns
+- Ownership and association
+- Action and interaction patterns
 """)
 
 # Sidebar
 st.sidebar.header("⚙️ Configuration")
 mode = st.sidebar.selectbox("Mode", ["Single Input", "Batch Processing", "Demo"])
 
-# Main processing function
-def process_text(text):
-    """Main NLP processing function"""
-    # Simulate processing
-    time.sleep(0.3)
+RELATIONSHIP_PATTERNS = {
+    'employment': ['works for', 'employed by', 'working at', 'hired by'],
+    'management': ['manages', 'supervises', 'leads', 'directs'],
+    'ownership': ['owns', 'founded', 'created', 'established'],
+    'location': ['lives in', 'located in', 'based in', 'from'],
+    'association': ['member of', 'part of', 'belongs to', 'associated with']
+}
+
+def extract_relationships(text):
+    """Extract relationships between entities"""
+    relationships = []
     
-    results = {
-        "text": text,
-        "length": len(text),
-        "word_count": len(text.split()),
-        "processed": True
+    for rel_type, patterns in RELATIONSHIP_PATTERNS.items():
+        for pattern in patterns:
+            # Find sentences with relationship patterns
+            regex = rf'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+{re.escape(pattern)}\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)'
+            matches = re.findall(regex, text)
+            for match in matches:
+                relationships.append({
+                    'subject': match[0],
+                    'relation': pattern,
+                    'object': match[1],
+                    'type': rel_type
+                })
+    
+    return {
+        'relationships': relationships,
+        'count': len(relationships),
+        'types': list(set([r['type'] for r in relationships]))
     }
-    
-    return results
 
 # Mode: Single Input
 if mode == "Single Input":
@@ -53,33 +70,25 @@ if mode == "Single Input":
         placeholder="Type or paste your text here..."
     )
     
-    if st.button("🔍 Process", type="primary"):
+    if st.button("🔍 Extract", type="primary"):
         if user_input.strip():
-            with st.spinner("Processing..."):
-                result = process_text(user_input)
+            result = extract_relationships(user_input)
+            st.success("✅ Complete!")
             
-            st.success("Processing Complete!")
-            
-            # Display metrics
-            col1, col2, col3 = st.columns(3)
+            col1, col2 = st.columns(2)
             with col1:
-                st.metric("Text Length", result["length"])
+                st.metric("Relationships Found", result['count'])
             with col2:
-                st.metric("Word Count", result["word_count"])
-            with col3:
-                st.metric("Status", "✅ Processed")
+                st.metric("Relationship Types", len(result['types']))
             
-            # Visualization
-            st.subheader("📊 Analysis Results")
-            fig = go.Figure(go.Indicator(
-                mode="number+gauge",
-                value=result["word_count"],
-                title={"text": "Word Count"},
-                gauge={"axis": {"range": [0, 1000]}}
-            ))
-            st.plotly_chart(fig, use_container_width=True)
+            if result['relationships']:
+                st.subheader("🔗 Extracted Relationships")
+                for rel in result['relationships']:
+                    st.write(f"**{rel['subject']}** *{rel['relation']}* **{rel['object']}** ({rel['type']})")
+            else:
+                st.info("No relationships found")
         else:
-            st.warning("Please enter some text to process.")
+            st.warning("Please enter text.")
 
 # Mode: Batch Processing
 elif mode == "Batch Processing":
@@ -92,68 +101,31 @@ elif mode == "Batch Processing":
         st.write(f"Loaded {len(df)} rows")
         
         if 'text' in df.columns:
-            if st.button("🔍 Process All", type="primary"):
-                results = []
-                progress_bar = st.progress(0)
-                
-                for idx, text in enumerate(df['text']):
-                    result = process_text(str(text))
-                    results.append(result)
-                    progress_bar.progress((idx + 1) / len(df))
-                
-                results_df = pd.DataFrame(results)
-                st.success(f"Processed {len(results_df)} texts!")
-                
-                # Summary stats
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Total Processed", len(results_df))
-                with col2:
-                    st.metric("Avg Word Count", f"{results_df['word_count'].mean():.1f}")
-                
-                # Visualization
-                fig = px.histogram(results_df, x='word_count', title='Word Count Distribution')
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Results table
-                st.dataframe(results_df, use_container_width=True)
-                
-                # Download
-                csv = results_df.to_csv(index=False)
-                st.download_button("📥 Download Results", csv, "results.csv", "text/csv")
+            if st.button("🔍 Extract All", type="primary"):
+                all_rels = []
+                for text in df['text']:
+                    all_rels.extend(extract_relationships(str(text))['relationships'])
+                st.success(f"✅ Found {len(all_rels)} relationships!")
+                if all_rels:
+                    rel_df = pd.DataFrame(all_rels[:50])
+                    st.dataframe(rel_df, use_container_width=True)
         else:
             st.error("CSV must contain 'text' column")
     else:
-        st.info("Upload a CSV file to perform batch processing")
+        st.info("Upload a CSV file")
 
 # Mode: Demo
 else:
     st.header("🎯 Demo Mode")
-    
-    sample_texts = [
-        "This is a sample text for demonstration.",
-        "Another example to show the processing capabilities.",
-        "Third sample text with different content."
-    ]
-    
-    st.write(f"Processing {len(sample_texts)} sample texts...")
+    sample = "John works for Google and manages Alice. Sarah founded Microsoft and lives in Seattle."
     
     if st.button("🚀 Run Demo", type="primary"):
-        results = []
-        for text in sample_texts:
-            result = process_text(text)
-            results.append(result)
-        
-        results_df = pd.DataFrame(results)
-        
-        st.success("Demo Complete!")
-        
-        # Display results
-        st.dataframe(results_df, use_container_width=True)
-        
-        # Visualization
-        fig = px.bar(results_df, x='word_count', y='length', title='Text Statistics')
-        st.plotly_chart(fig, use_container_width=True)
+        r = extract_relationships(sample)
+        st.success("✅ Demo Complete!")
+        st.metric("Relationships", r['count'])
+        for rel in r['relationships']:
+            st.write(f"**{rel['subject']}** *{rel['relation']}* **{rel['object']}**")
 
 st.markdown("---")
-st.markdown("**About**: Relationship Extraction - Entity relationship identification")
+st.markdown("**About**: Relationship Extraction")
+st.caption("💡 Extracts relationships between named entities")

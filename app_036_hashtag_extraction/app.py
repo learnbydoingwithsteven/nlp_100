@@ -8,7 +8,8 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import time
+import re
+from collections import Counter
 
 st.set_page_config(
     page_title="Hashtag Extraction",
@@ -16,12 +17,13 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🔤 Hashtag Extraction")
+st.title("#️⃣ Hashtag Extraction")
 st.markdown("""
-**Real-world Use Case**: Social media tag extraction
-- Process and analyze text data
-- Extract meaningful insights
-- Visualize results comprehensively
+**Real-world Use Case**: Extract hashtags
+- Social media tags
+- Trend analysis
+- Frequency counting
+- Topic identification
 """)
 
 # Sidebar
@@ -29,19 +31,16 @@ st.sidebar.header("⚙️ Configuration")
 mode = st.sidebar.selectbox("Mode", ["Single Input", "Batch Processing", "Demo"])
 
 # Main processing function
-def process_text(text):
-    """Main NLP processing function"""
-    # Simulate processing
-    time.sleep(0.3)
-    
-    results = {
-        "text": text,
-        "length": len(text),
-        "word_count": len(text.split()),
-        "processed": True
+def extract_hashtags(text):
+    """Extract hashtags"""
+    hashtags = re.findall(r'#\w+', text)
+    hashtag_counts = Counter(hashtags)
+    return {
+        'hashtags': hashtags,
+        'unique': list(set(hashtags)),
+        'count': len(hashtags),
+        'top_hashtags': dict(hashtag_counts.most_common(10))
     }
-    
-    return results
 
 # Mode: Single Input
 if mode == "Single Input":
@@ -53,33 +52,22 @@ if mode == "Single Input":
         placeholder="Type or paste your text here..."
     )
     
-    if st.button("🔍 Process", type="primary"):
+    if st.button("🔍 Extract", type="primary"):
         if user_input.strip():
-            with st.spinner("Processing..."):
-                result = process_text(user_input)
-            
-            st.success("Processing Complete!")
-            
-            # Display metrics
-            col1, col2, col3 = st.columns(3)
+            r = extract_hashtags(user_input)
+            st.success("✅ Complete!")
+            col1, col2 = st.columns(2)
             with col1:
-                st.metric("Text Length", result["length"])
+                st.metric("Total Hashtags", r['count'])
             with col2:
-                st.metric("Word Count", result["word_count"])
-            with col3:
-                st.metric("Status", "✅ Processed")
-            
-            # Visualization
-            st.subheader("📊 Analysis Results")
-            fig = go.Figure(go.Indicator(
-                mode="number+gauge",
-                value=result["word_count"],
-                title={"text": "Word Count"},
-                gauge={"axis": {"range": [0, 1000]}}
-            ))
-            st.plotly_chart(fig, use_container_width=True)
+                st.metric("Unique", len(r['unique']))
+            if r['hashtags']:
+                st.subheader("#️⃣ Hashtags")
+                st.write(", ".join(r['unique']))
+            else:
+                st.info("No hashtags found")
         else:
-            st.warning("Please enter some text to process.")
+            st.warning("Please enter text.")
 
 # Mode: Batch Processing
 elif mode == "Batch Processing":
@@ -92,68 +80,28 @@ elif mode == "Batch Processing":
         st.write(f"Loaded {len(df)} rows")
         
         if 'text' in df.columns:
-            if st.button("🔍 Process All", type="primary"):
-                results = []
-                progress_bar = st.progress(0)
-                
-                for idx, text in enumerate(df['text']):
-                    result = process_text(str(text))
-                    results.append(result)
-                    progress_bar.progress((idx + 1) / len(df))
-                
-                results_df = pd.DataFrame(results)
-                st.success(f"Processed {len(results_df)} texts!")
-                
-                # Summary stats
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Total Processed", len(results_df))
-                with col2:
-                    st.metric("Avg Word Count", f"{results_df['word_count'].mean():.1f}")
-                
-                # Visualization
-                fig = px.histogram(results_df, x='word_count', title='Word Count Distribution')
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Results table
-                st.dataframe(results_df, use_container_width=True)
-                
-                # Download
-                csv = results_df.to_csv(index=False)
-                st.download_button("📥 Download Results", csv, "results.csv", "text/csv")
+            if st.button("🔍 Extract All", type="primary"):
+                all_tags = []
+                for text in df['text']:
+                    all_tags.extend(extract_hashtags(str(text))['hashtags'])
+                tag_counts = Counter(all_tags)
+                st.success(f"✅ Found {len(all_tags)} hashtags!")
+                st.write("**Top 20:**", dict(tag_counts.most_common(20)))
         else:
             st.error("CSV must contain 'text' column")
     else:
-        st.info("Upload a CSV file to perform batch processing")
+        st.info("Upload a CSV file")
 
 # Mode: Demo
 else:
     st.header("🎯 Demo Mode")
-    
-    sample_texts = [
-        "This is a sample text for demonstration.",
-        "Another example to show the processing capabilities.",
-        "Third sample text with different content."
-    ]
-    
-    st.write(f"Processing {len(sample_texts)} sample texts...")
+    sample = "Love this! #AI #MachineLearning #DataScience #Python #NLP #AI"
     
     if st.button("🚀 Run Demo", type="primary"):
-        results = []
-        for text in sample_texts:
-            result = process_text(text)
-            results.append(result)
-        
-        results_df = pd.DataFrame(results)
-        
-        st.success("Demo Complete!")
-        
-        # Display results
-        st.dataframe(results_df, use_container_width=True)
-        
-        # Visualization
-        fig = px.bar(results_df, x='word_count', y='length', title='Text Statistics')
-        st.plotly_chart(fig, use_container_width=True)
+        r = extract_hashtags(sample)
+        st.success("✅ Demo Complete!")
+        st.write("**Hashtags:**", r['unique'])
 
 st.markdown("---")
-st.markdown("**About**: Hashtag Extraction - Social media tag extraction")
+st.markdown("**About**: Hashtag Extraction")
+st.caption("💡 Extracts social media hashtags")

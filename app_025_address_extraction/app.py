@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import time
+import re
 
 st.set_page_config(
     page_title="Address Extraction",
@@ -16,32 +16,37 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🔤 Address Extraction")
+st.title("📍 Address Extraction")
 st.markdown("""
-**Real-world Use Case**: Postal address parsing
-- Process and analyze text data
-- Extract meaningful insights
-- Visualize results comprehensively
+**Real-world Use Case**: Extract physical addresses
+- Street addresses
+- City, state, ZIP codes
+- P.O. Boxes
+- Multi-line address parsing
 """)
 
 # Sidebar
 st.sidebar.header("⚙️ Configuration")
 mode = st.sidebar.selectbox("Mode", ["Single Input", "Batch Processing", "Demo"])
 
-# Main processing function
-def process_text(text):
-    """Main NLP processing function"""
-    # Simulate processing
-    time.sleep(0.3)
+def extract_addresses(text):
+    """Extract addresses from text"""
+    # ZIP codes
+    zips = re.findall(r'\b\d{5}(?:-\d{4})?\b', text)
+    # States (2-letter codes)
+    states = re.findall(r'\b[A-Z]{2}\b', text)
+    # Street addresses
+    streets = re.findall(r'\d+\s+[A-Za-z0-9\s,]+(?:Street|St\.?|Avenue|Ave\.?|Road|Rd\.?|Drive|Dr\.?|Lane|Ln\.?|Boulevard|Blvd\.?|Way|Court|Ct\.?)', text, re.I)
+    # P.O. Boxes
+    po_boxes = re.findall(r'P\.?O\.?\s*Box\s*\d+', text, re.I)
     
-    results = {
-        "text": text,
-        "length": len(text),
-        "word_count": len(text.split()),
-        "processed": True
+    return {
+        'streets': streets,
+        'zips': zips,
+        'states': states,
+        'po_boxes': po_boxes,
+        'total_addresses': len(streets) + len(po_boxes)
     }
-    
-    return results
 
 # Mode: Single Input
 if mode == "Single Input":
@@ -53,33 +58,33 @@ if mode == "Single Input":
         placeholder="Type or paste your text here..."
     )
     
-    if st.button("🔍 Process", type="primary"):
+    if st.button("🔍 Extract Addresses", type="primary"):
         if user_input.strip():
-            with st.spinner("Processing..."):
-                result = process_text(user_input)
+            result = extract_addresses(user_input)
+            st.success("✅ Extraction Complete!")
             
-            st.success("Processing Complete!")
-            
-            # Display metrics
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Text Length", result["length"])
+                st.metric("Addresses Found", result['total_addresses'])
             with col2:
-                st.metric("Word Count", result["word_count"])
+                st.metric("ZIP Codes", len(result['zips']))
             with col3:
-                st.metric("Status", "✅ Processed")
+                st.metric("States", len(set(result['states'])))
             
-            # Visualization
-            st.subheader("📊 Analysis Results")
-            fig = go.Figure(go.Indicator(
-                mode="number+gauge",
-                value=result["word_count"],
-                title={"text": "Word Count"},
-                gauge={"axis": {"range": [0, 1000]}}
-            ))
-            st.plotly_chart(fig, use_container_width=True)
+            if result['streets']:
+                st.subheader("🏘️ Street Addresses")
+                for addr in result['streets']:
+                    st.write(f"📍 {addr}")
+            
+            if result['po_boxes']:
+                st.subheader("📮 P.O. Boxes")
+                for po in result['po_boxes']:
+                    st.write(f"📮 {po}")
+            
+            if result['zips']:
+                st.write("**ZIP Codes:**", ", ".join(result['zips']))
         else:
-            st.warning("Please enter some text to process.")
+            st.warning("Please enter text.")
 
 # Mode: Batch Processing
 elif mode == "Batch Processing":
@@ -92,68 +97,41 @@ elif mode == "Batch Processing":
         st.write(f"Loaded {len(df)} rows")
         
         if 'text' in df.columns:
-            if st.button("🔍 Process All", type="primary"):
-                results = []
-                progress_bar = st.progress(0)
+            if st.button("🔍 Extract All", type="primary"):
+                all_addresses = []
+                for text in df['text']:
+                    result = extract_addresses(str(text))
+                    all_addresses.extend(result['streets'])
                 
-                for idx, text in enumerate(df['text']):
-                    result = process_text(str(text))
-                    results.append(result)
-                    progress_bar.progress((idx + 1) / len(df))
+                st.success(f"✅ Found {len(all_addresses)} addresses!")
+                st.metric("Total Addresses", len(all_addresses))
                 
-                results_df = pd.DataFrame(results)
-                st.success(f"Processed {len(results_df)} texts!")
-                
-                # Summary stats
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Total Processed", len(results_df))
-                with col2:
-                    st.metric("Avg Word Count", f"{results_df['word_count'].mean():.1f}")
-                
-                # Visualization
-                fig = px.histogram(results_df, x='word_count', title='Word Count Distribution')
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Results table
-                st.dataframe(results_df, use_container_width=True)
-                
-                # Download
-                csv = results_df.to_csv(index=False)
-                st.download_button("📥 Download Results", csv, "results.csv", "text/csv")
+                if all_addresses:
+                    addr_df = pd.DataFrame({'Address': all_addresses[:50]})
+                    st.dataframe(addr_df, use_container_width=True)
         else:
             st.error("CSV must contain 'text' column")
     else:
-        st.info("Upload a CSV file to perform batch processing")
+        st.info("Upload a CSV file")
 
 # Mode: Demo
 else:
     st.header("🎯 Demo Mode")
     
-    sample_texts = [
-        "This is a sample text for demonstration.",
-        "Another example to show the processing capabilities.",
-        "Third sample text with different content."
-    ]
-    
-    st.write(f"Processing {len(sample_texts)} sample texts...")
+    sample = "Visit us at 123 Main Street, New York, NY 10001 or mail to P.O. Box 456, Los Angeles, CA 90001"
     
     if st.button("🚀 Run Demo", type="primary"):
-        results = []
-        for text in sample_texts:
-            result = process_text(text)
-            results.append(result)
+        result = extract_addresses(sample)
+        st.success("✅ Demo Complete!")
+        st.metric("Addresses Found", result['total_addresses'])
         
-        results_df = pd.DataFrame(results)
-        
-        st.success("Demo Complete!")
-        
-        # Display results
-        st.dataframe(results_df, use_container_width=True)
-        
-        # Visualization
-        fig = px.bar(results_df, x='word_count', y='length', title='Text Statistics')
-        st.plotly_chart(fig, use_container_width=True)
+        if result['streets']:
+            st.write("**Streets:**")
+            for addr in result['streets']:
+                st.write(f"📍 {addr}")
+        if result['po_boxes']:
+            st.write("**P.O. Boxes:**", result['po_boxes'])
 
 st.markdown("---")
-st.markdown("**About**: Address Extraction - Postal address parsing")
+st.markdown("**About**: Address Extraction - Parse physical addresses")
+st.caption("💡 Extracts street addresses, ZIP codes, P.O. Boxes")

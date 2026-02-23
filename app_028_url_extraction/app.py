@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import time
+import re
 
 st.set_page_config(
     page_title="URL Extraction",
@@ -16,32 +16,29 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🔤 URL Extraction")
+st.title("🔗 URL Extraction")
 st.markdown("""
-**Real-world Use Case**: Link extraction and validation
-- Process and analyze text data
-- Extract meaningful insights
-- Visualize results comprehensively
+**Real-world Use Case**: Extract web links
+- HTTP/HTTPS URLs
+- www. domains
+- Domain extraction
+- Link validation
 """)
 
 # Sidebar
 st.sidebar.header("⚙️ Configuration")
 mode = st.sidebar.selectbox("Mode", ["Single Input", "Batch Processing", "Demo"])
 
-# Main processing function
-def process_text(text):
-    """Main NLP processing function"""
-    # Simulate processing
-    time.sleep(0.3)
+def extract_urls(text):
+    """Extract URLs"""
+    urls = re.findall(r'https?://[^\s]+|www\.[^\s]+', text, re.I)
+    domains = []
+    for url in urls:
+        match = re.search(r'(?:https?://)?(?:www\.)?([^/\s]+)', url)
+        if match:
+            domains.append(match.group(1))
     
-    results = {
-        "text": text,
-        "length": len(text),
-        "word_count": len(text.split()),
-        "processed": True
-    }
-    
-    return results
+    return {'urls': urls, 'domains': list(set(domains)), 'count': len(urls)}
 
 # Mode: Single Input
 if mode == "Single Input":
@@ -53,33 +50,25 @@ if mode == "Single Input":
         placeholder="Type or paste your text here..."
     )
     
-    if st.button("🔍 Process", type="primary"):
+    if st.button("🔍 Extract", type="primary"):
         if user_input.strip():
-            with st.spinner("Processing..."):
-                result = process_text(user_input)
+            result = extract_urls(user_input)
+            st.success("✅ Complete!")
             
-            st.success("Processing Complete!")
-            
-            # Display metrics
-            col1, col2, col3 = st.columns(3)
+            col1, col2 = st.columns(2)
             with col1:
-                st.metric("Text Length", result["length"])
+                st.metric("URLs Found", result['count'])
             with col2:
-                st.metric("Word Count", result["word_count"])
-            with col3:
-                st.metric("Status", "✅ Processed")
+                st.metric("Unique Domains", len(result['domains']))
             
-            # Visualization
-            st.subheader("📊 Analysis Results")
-            fig = go.Figure(go.Indicator(
-                mode="number+gauge",
-                value=result["word_count"],
-                title={"text": "Word Count"},
-                gauge={"axis": {"range": [0, 1000]}}
-            ))
-            st.plotly_chart(fig, use_container_width=True)
+            if result['urls']:
+                st.subheader("🔗 URLs")
+                for url in result['urls']:
+                    st.write(f"🔗 {url}")
+            else:
+                st.info("No URLs found")
         else:
-            st.warning("Please enter some text to process.")
+            st.warning("Please enter text.")
 
 # Mode: Batch Processing
 elif mode == "Batch Processing":
@@ -92,68 +81,29 @@ elif mode == "Batch Processing":
         st.write(f"Loaded {len(df)} rows")
         
         if 'text' in df.columns:
-            if st.button("🔍 Process All", type="primary"):
-                results = []
-                progress_bar = st.progress(0)
-                
-                for idx, text in enumerate(df['text']):
-                    result = process_text(str(text))
-                    results.append(result)
-                    progress_bar.progress((idx + 1) / len(df))
-                
-                results_df = pd.DataFrame(results)
-                st.success(f"Processed {len(results_df)} texts!")
-                
-                # Summary stats
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Total Processed", len(results_df))
-                with col2:
-                    st.metric("Avg Word Count", f"{results_df['word_count'].mean():.1f}")
-                
-                # Visualization
-                fig = px.histogram(results_df, x='word_count', title='Word Count Distribution')
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Results table
-                st.dataframe(results_df, use_container_width=True)
-                
-                # Download
-                csv = results_df.to_csv(index=False)
-                st.download_button("📥 Download Results", csv, "results.csv", "text/csv")
+            if st.button("🔍 Extract All", type="primary"):
+                all_urls = []
+                for text in df['text']:
+                    all_urls.extend(extract_urls(str(text))['urls'])
+                st.success(f"✅ Found {len(all_urls)} URLs!")
+                if all_urls:
+                    st.write(all_urls[:20])
         else:
             st.error("CSV must contain 'text' column")
     else:
-        st.info("Upload a CSV file to perform batch processing")
+        st.info("Upload a CSV file")
 
 # Mode: Demo
 else:
     st.header("🎯 Demo Mode")
-    
-    sample_texts = [
-        "This is a sample text for demonstration.",
-        "Another example to show the processing capabilities.",
-        "Third sample text with different content."
-    ]
-    
-    st.write(f"Processing {len(sample_texts)} sample texts...")
+    sample = "Visit https://example.com and www.test.org for more info."
     
     if st.button("🚀 Run Demo", type="primary"):
-        results = []
-        for text in sample_texts:
-            result = process_text(text)
-            results.append(result)
-        
-        results_df = pd.DataFrame(results)
-        
-        st.success("Demo Complete!")
-        
-        # Display results
-        st.dataframe(results_df, use_container_width=True)
-        
-        # Visualization
-        fig = px.bar(results_df, x='word_count', y='length', title='Text Statistics')
-        st.plotly_chart(fig, use_container_width=True)
+        r = extract_urls(sample)
+        st.success("✅ Demo Complete!")
+        st.write("**URLs:**", r['urls'])
+        st.write("**Domains:**", r['domains'])
 
 st.markdown("---")
-st.markdown("**About**: URL Extraction - Link extraction and validation")
+st.markdown("**About**: URL Extraction")
+st.caption("💡 Extracts web links and domains")

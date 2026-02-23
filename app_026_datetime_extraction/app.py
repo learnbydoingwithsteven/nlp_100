@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import time
+import re
 
 st.set_page_config(
     page_title="Date/Time Extraction",
@@ -16,32 +16,33 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🔤 Date/Time Extraction")
+st.title("📅 Date/Time Extraction")
 st.markdown("""
-**Real-world Use Case**: Temporal information extraction
-- Process and analyze text data
-- Extract meaningful insights
-- Visualize results comprehensively
+**Real-world Use Case**: Extract dates and times
+- Multiple date formats
+- Time expressions
+- Relative dates
+- Date ranges
 """)
 
 # Sidebar
 st.sidebar.header("⚙️ Configuration")
 mode = st.sidebar.selectbox("Mode", ["Single Input", "Batch Processing", "Demo"])
 
-# Main processing function
-def process_text(text):
-    """Main NLP processing function"""
-    # Simulate processing
-    time.sleep(0.3)
+def extract_datetimes(text):
+    """Extract dates and times"""
+    dates = []
+    # Numeric dates: MM/DD/YYYY, DD-MM-YYYY
+    dates.extend(re.findall(r'\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b', text))
+    # Written dates: January 15, 2024
+    dates.extend(re.findall(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}\b', text, re.I))
+    # ISO format: 2024-01-15
+    dates.extend(re.findall(r'\b\d{4}-\d{2}-\d{2}\b', text))
     
-    results = {
-        "text": text,
-        "length": len(text),
-        "word_count": len(text.split()),
-        "processed": True
-    }
+    # Times: 3:30 PM, 15:00, 3pm
+    times = re.findall(r'\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM|am|pm)?\b|\b\d{1,2}\s*(?:AM|PM|am|pm)\b', text)
     
-    return results
+    return {'dates': dates, 'times': times, 'total': len(dates) + len(times)}
 
 # Mode: Single Input
 if mode == "Single Input":
@@ -53,33 +54,29 @@ if mode == "Single Input":
         placeholder="Type or paste your text here..."
     )
     
-    if st.button("🔍 Process", type="primary"):
+    if st.button("🔍 Extract", type="primary"):
         if user_input.strip():
-            with st.spinner("Processing..."):
-                result = process_text(user_input)
+            result = extract_datetimes(user_input)
+            st.success("✅ Complete!")
             
-            st.success("Processing Complete!")
-            
-            # Display metrics
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Text Length", result["length"])
+                st.metric("Total Found", result['total'])
             with col2:
-                st.metric("Word Count", result["word_count"])
+                st.metric("Dates", len(result['dates']))
             with col3:
-                st.metric("Status", "✅ Processed")
+                st.metric("Times", len(result['times']))
             
-            # Visualization
-            st.subheader("📊 Analysis Results")
-            fig = go.Figure(go.Indicator(
-                mode="number+gauge",
-                value=result["word_count"],
-                title={"text": "Word Count"},
-                gauge={"axis": {"range": [0, 1000]}}
-            ))
-            st.plotly_chart(fig, use_container_width=True)
+            if result['dates']:
+                st.subheader("📅 Dates")
+                for date in result['dates']:
+                    st.write(f"📅 {date}")
+            
+            if result['times']:
+                st.subheader("🕐 Times")
+                st.write(", ".join(result['times']))
         else:
-            st.warning("Please enter some text to process.")
+            st.warning("Please enter text.")
 
 # Mode: Batch Processing
 elif mode == "Batch Processing":
@@ -92,68 +89,29 @@ elif mode == "Batch Processing":
         st.write(f"Loaded {len(df)} rows")
         
         if 'text' in df.columns:
-            if st.button("🔍 Process All", type="primary"):
-                results = []
-                progress_bar = st.progress(0)
-                
-                for idx, text in enumerate(df['text']):
-                    result = process_text(str(text))
-                    results.append(result)
-                    progress_bar.progress((idx + 1) / len(df))
-                
-                results_df = pd.DataFrame(results)
-                st.success(f"Processed {len(results_df)} texts!")
-                
-                # Summary stats
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Total Processed", len(results_df))
-                with col2:
-                    st.metric("Avg Word Count", f"{results_df['word_count'].mean():.1f}")
-                
-                # Visualization
-                fig = px.histogram(results_df, x='word_count', title='Word Count Distribution')
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Results table
-                st.dataframe(results_df, use_container_width=True)
-                
-                # Download
-                csv = results_df.to_csv(index=False)
-                st.download_button("📥 Download Results", csv, "results.csv", "text/csv")
+            if st.button("🔍 Extract All", type="primary"):
+                all_dates, all_times = [], []
+                for text in df['text']:
+                    r = extract_datetimes(str(text))
+                    all_dates.extend(r['dates'])
+                    all_times.extend(r['times'])
+                st.success(f"✅ Found {len(all_dates)} dates, {len(all_times)} times!")
         else:
             st.error("CSV must contain 'text' column")
     else:
-        st.info("Upload a CSV file to perform batch processing")
+        st.info("Upload a CSV file")
 
 # Mode: Demo
 else:
     st.header("🎯 Demo Mode")
-    
-    sample_texts = [
-        "This is a sample text for demonstration.",
-        "Another example to show the processing capabilities.",
-        "Third sample text with different content."
-    ]
-    
-    st.write(f"Processing {len(sample_texts)} sample texts...")
+    sample = "Meeting on January 15, 2024 at 3:30 PM. Next session: 02/20/2024 at 10am."
     
     if st.button("🚀 Run Demo", type="primary"):
-        results = []
-        for text in sample_texts:
-            result = process_text(text)
-            results.append(result)
-        
-        results_df = pd.DataFrame(results)
-        
-        st.success("Demo Complete!")
-        
-        # Display results
-        st.dataframe(results_df, use_container_width=True)
-        
-        # Visualization
-        fig = px.bar(results_df, x='word_count', y='length', title='Text Statistics')
-        st.plotly_chart(fig, use_container_width=True)
+        r = extract_datetimes(sample)
+        st.success("✅ Demo Complete!")
+        st.write("**Dates:**", r['dates'])
+        st.write("**Times:**", r['times'])
 
 st.markdown("---")
-st.markdown("**About**: Date/Time Extraction - Temporal information extraction")
+st.markdown("**About**: Date/Time Extraction")
+st.caption("💡 Extracts dates and times in multiple formats")
